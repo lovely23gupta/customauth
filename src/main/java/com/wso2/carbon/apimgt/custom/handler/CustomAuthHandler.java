@@ -70,22 +70,28 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
                     getProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS);
             String clientId = (String) headers.get("clientId");
             String clientSecret = (String) headers.get("clientSecret");
+            String customerId = (String)headers.get("customer");
             log.info("this is the client Id" + clientId);
             log.info("this is the client Secret " + clientSecret);
             //adding this code for temporary purpose, need to modify the API
             headers.remove(clientId);
             headers.remove(clientSecret);
             String token = generateBearerToken(clientId, clientSecret);
+            //String serviceKey = GenerateServiceKey("https://vensdev2.xdtesting.net/Citrix/Monitor/OData/v4/data");
             log.info("this is the token" + token);
-            boolean isTokenValid = AuthorizeBearerToken(token.toString(),"ptipkmndeg54");
+            //measuring the time for authorization of bearer token
+            long starttimeforauth = System.nanoTime();
+            boolean isTokenValid = AuthorizeBearerToken(token,customerId);
+            long endtimeforauth = System.nanoTime();
+            log.info("this is the duration to authorize the bearer token"+(starttimeforauth-endtimeforauth));
             if(isTokenValid) {
                 headers.put("Authorization", token);
+               // headers.put("Authorization",serviceKey);
             }
             else
             {
                 log.error("please enter the valid token");
             }
-            log.info("this is the header after putting the value" + headers);
             long endtime = System.nanoTime();
             long duration = starttime - endtime;
             log.info("this is the duration for CPET" + duration);
@@ -99,11 +105,12 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
     private static String generateBearerToken(String clientId, String clientSecret) throws CustomHandlerException, UnsupportedEncodingException {
         String token1 = null;
         StringBuilder token = new StringBuilder();
-        HttpPost httpPost = new HttpPost("https://trust.ctxwsstgapi.net/ptipkmndeg54/tokens/clients");
+        log.info("before the post call");
+        HttpPost httpPost = new HttpPost("https://trust.citrixworkspacesapi.net/root/tokens/clients");
         List<NameValuePair> params = new ArrayList<NameValuePair>(2);
         JSONObject json = new JSONObject();
-        json.put("clientId", "3ada351a-9083-4c51-aefb-59983ce33a02");
-        json.put("clientSecret", "oMjOxSIHNkNak589J_MNhg==");
+        json.put("clientId", clientId);
+        json.put("clientSecret", clientSecret);
         httpPost.addHeader("content-type", "application/json");
         httpPost.setEntity(new StringEntity(json.toString()));
         RequestConfig defaultRequestConfig = RequestConfig.custom().setConnectTimeout(30000).setSocketTimeout(30000)
@@ -116,12 +123,12 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
             throw new CustomHandlerException("Error while getting https client", e);
         }
         long startTime = System.nanoTime();
-        log.info("this is the start of the method======" + startTime);
+        log.info("this is the start of the method to call token gen trust service======" + startTime);
         try (CloseableHttpResponse response = apacheClient.execute(httpPost)) {
             long endTime = System.nanoTime();
             log.info("this is the end of the method====" + endTime);
             long duration = (endTime - startTime);
-            log.info("this is the duration of the method======" + duration);
+            log.info("this is the duration of the method to call token gen trust service======" + duration);
             String responseString = IOUtils.toString(response.getEntity().getContent());
             log.info("hi this is the response from token gen API" + responseString);
             JSONParser parser = new JSONParser();
@@ -129,8 +136,8 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
             token1 = (String) body.get("token");
             token.append("CWSAuth bearer=");
             token.append(token1);
-            log.info("this is the bearer token " + token);
-            String token2 = Base64.getEncoder().withoutPadding().encodeToString(token.toString().getBytes());
+            log.info("this is the CWSAuth bearer token " + token);
+           // String token2 = Base64.getEncoder().withoutPadding().encodeToString(token.toString().getBytes());
         } catch (ClientProtocolException e) {
             e.printStackTrace();
         } catch (IOException | ParseException e) {
@@ -139,45 +146,41 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
         //return Response.status(Response.Status.OK).entity("{\"token\" : \"" + token + "\"}").build();
         return token.toString();
     }
-
-
     //start of cc auth implementation
 
     public static boolean AuthorizeBearerToken(String token,String customerId)
     {
-
-       // log.info("Inside Authorization of token");
+        // log.info("Inside Authorization of token");
         String header = token;
         IdentityValidationContext context = new IdentityValidationContext(customerId);
-        RequestMessage request = new RequestMessage(RequestMethod.GET,"https://catalogs.apps.cloudchalupa.com/ptipkmndeg54/sites");
-       // RequestMessage requestMessage = new RequestMessage(RequestMethod.GET);
-        IdentityValidationResult result = ValidateHeader(header, request, context);
-
-        System.out.println("this is the result==="+result);
-
+        log.info("this is the context"+context);
+       // RequestMessage request = new RequestMessage(RequestMethod.GET,"https://vensdev2.xdtesting.net/Citrix/Monitor/OData/v4/data");
+        IdentityValidationResult result = ValidateHeader(header, context);
         log.info("This is the result"+result);
 
             if (result.isSuccessAuthorizationCode())
             {
+                log.info("this is the boolean value==="+result.isSuccessAuthorizationCode());
                 return true;
             }
             else {
+                log.info("this is the boolean value==="+result.isSuccessAuthorizationCode());
                 return false;
             }
-        }
+    }
 
-    public static IdentityValidationResult ValidateHeader(String header,RequestMessage request,IdentityValidationContext context)
+    public static IdentityValidationResult ValidateHeader(String header,IdentityValidationContext context)
     {
         CCAuthOptions configOptions = new CCAuthOptions();
         CCAuthHandleOptions options = new CCAuthHandleOptions();
-        configOptions.routeTemplate("https://[service].ctxwsstgapi.net");
-        configOptions.serviceName("XenApp");
+        configOptions.routeTemplate("https://[service]-us.citrixworkspacesapi.net");
+        configOptions.serviceName("XDDDC");
         configOptions.serviceInstanceId("E16942-0");
         Signer signer = new RSASigner("PFJTQUtleVZhbHVlPjxNb2R1bHVzPnRMVTNtTy9HUW1IbjFFMGgxM2QrSVEydlpQdi8xMHVpbWtJZXlPQkRqYll2MHo5MVpXMnBTd0lRNW9LL2htMjVtaUNnMkIxeHJzVHNPelJsenArWm5nUXhoVXA0d3RNY3hvNktLZGZDcGRRTXFZTmw1OHFBMlg2bWRoSW5RblJtQ0pobFFrNWM3ejRGYUZQZVFuVHFjVXl5L2dPWjNHN0RjeC91YVV6MkJuYVhPNXJhdmxId0dOckQ1N3oyOUFkbVQzUHRrcW94eXlVUjdGRWVYUTdnalViUXNSVEhNYWJWWi81dXFKUTM1dnlWeFVuUTBFVFVrUlptSHBETGVVeFplbUlzWXNOM3ZZK05CSktIOXFJOC9EM0FDMEY5STQrMmp5ZUVoL1lXV21RVkdBTDlCRDljYUFKV29kYTVjZTF2VEtlclBZekdsTWVydXFaNGNyTU02UT09PC9Nb2R1bHVzPjxFeHBvbmVudD5BUUFCPC9FeHBvbmVudD48UD4yS1ZsZFN0U0JIYWJRdjBMelM4U1JNNDAwVG96RXg0MjVscG1TcEZ4eld6VEtGeVlmb2c3WGxZdGxOZVkzeHdQcDBZbkRWbnNJWStuTkcxcTd0Y3hCaWo5QlRLUVVDTWRXY2R1N0dLcHVFL2I5QytnUGFodWhZMmUyc25mazJ4TVRnQmJWZE5EZEVwblQ5UEtvdEczZFI5Tzc5Y2JiVk5IUVB0T21LaEtoanM9PC9QPjxRPjFZaVovSVJqRElRWEdPekVVb1pGeDNESHhNTUd5NERPMUl1eW5kRmZubmtieW4weTkrQmVPMEFkSHo5NUdlMzYyWHIyaFpNQWN4aG9Nb3c1NE9oYmhUaFliVCtsb2dINlZTeFMySDN2R2YvSFJoenJUbUFkNExpblRyZno3ZU1vK1VoMnEvMzd3dWU5L2FDajB1VGhDOER0NG5rbyt4dmFSSUJJMVVPR2N5cz08L1E+PERQPmxDc2FaclpJRTlGaWdzQTZFQXkvZTl0aitDekx2YW1PZHFFaEVLTEVxSEJqUWxtQjJoZ21NbkRTSDlnTUw1c3JnWVhUTTZocWZOR1kwNXg1NC91OUJhK0d6TVUyT2ZpcUhEcnZ2REFHVDQ0ZXFyVGY3UXVDKzBoT2V1aFNScXRzekhRbUExN0g1WUwxZ1gwaU81VWUyYldkOFI2M0hXQTFmVlhpL1Rrc0x2MD08L0RQPjxEUT5ac2J4RnhIQmV1eTVFVTRrMEhQQWNsWmVVTjV1RHRWWXVBVGxYQURDdlV3ZGpFRG1uMWhuQXEzQlZxRCtjUFNTb01zR2pSUk1TeG1jVFhnaEE1ZlROVFFCbTlQZXJUTzJnZmhyaDdoVnRYWGZQR2YrK2lKWlB5aWhuc243cHF5SHREU2txZlA5a2JwcFFBSnAxOEJDY1ozUzRnYmZLcjRsT0lObWl2K05YekU9PC9EUT48SW52ZXJzZVE+eUo5bWFteENER2dQVGVHa2RQdm1jcURsK3R2OUU5VmlRK3pqWXNSeFcwRENMT2toUERsWnh1RkhEZlI1cXZvNy8vZXJxUFNpZlZJRWFEaFJFenlMeTI2cFhlRjhUajRXdi9NMWMyL1V4WEZHS212Mk1qbEFScXNsVE4yS1hTMjR1YVhuY0J0dUtEUXZ1ZWJ2TUtYZjV4VDBBTEFYd1NYSmtabkhKREtTMUQ0PTwvSW52ZXJzZVE+PEQ+VXVuTEJyc05acXZ4YVBHekUxL2FXV1FrRTl1a09hNlVmdDdUclN0cEUzNkNWeFVJMG04TWZFUUlhUnVZc1I5clI1S3MrandZU3k1RGphNnUvNjB2R05lbnVSYkFiZlBiZ2ljb3NhWXp3MDZXT0xqM2F2RDVTZEhZb3RnVmQySmM1cGkxN1VSelU3cExWT0VXVzd1MVRpTDVCWisxV3ZUZmJOVTcyTWpkSVgxRzZWMWpTTGNsa0hyTnJDNmRYRCtzdlYxa3JFYUxndlVtUXM1THhmT29zSmVhVEF0eHE2NE13bDBLdjNUWlR4c3NGV3dQUVY3ZWhCY1h2bU1nYnN2WXpwbU9QeGRRTXZMY3l5NWVOS0JCZDh5MmpSaUI5ZmtCUDA5WEttdDNvenFLNkFQN1hoMDA5WS9qaEJnUTY4VStXRFIyTC9sQ2FWZmd1Skk0TEVkUzJRPT08L0Q+PC9SU0FLZXlWYWx1ZT4=");
         options.configurationOptions(configOptions);
         options.signer(signer);
         try (CCAuthHandle handle = new CCAuthHandle(options)) {
-            return handle.validateIdentity(header, request, context);
+            return handle.validateIdentity(header, context);
         } catch (Exception ignored) {
             // Handle and/or log error.
             return null;
@@ -186,9 +189,8 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
 
     public static String createServiceKey(RequestMessage request) {
         CCAuthOptions configOptions = new CCAuthOptions();
-        configOptions.serviceName("XenApp");
+        configOptions.serviceName("XDDDC");
         configOptions.serviceInstanceId("E16942-0"); // optional field, fill if needed
-
         try ( Signer signer = new RSASigner("PFJTQUtleVZhbHVlPjxNb2R1bHVzPnRMVTNtTy9HUW1IbjFFMGgxM2QrSVEydlpQdi8xMHVpbWtJZXlPQkRqYll2MHo5MVpXMnBTd0lRNW9LL2htMjVtaUNnMkIxeHJzVHNPelJsenArWm5nUXhoVXA0d3RNY3hvNktLZGZDcGRRTXFZTmw1OHFBMlg2bWRoSW5RblJtQ0pobFFrNWM3ejRGYUZQZVFuVHFjVXl5L2dPWjNHN0RjeC91YVV6MkJuYVhPNXJhdmxId0dOckQ1N3oyOUFkbVQzUHRrcW94eXlVUjdGRWVYUTdnalViUXNSVEhNYWJWWi81dXFKUTM1dnlWeFVuUTBFVFVrUlptSHBETGVVeFplbUlzWXNOM3ZZK05CSktIOXFJOC9EM0FDMEY5STQrMmp5ZUVoL1lXV21RVkdBTDlCRDljYUFKV29kYTVjZTF2VEtlclBZekdsTWVydXFaNGNyTU02UT09PC9Nb2R1bHVzPjxFeHBvbmVudD5BUUFCPC9FeHBvbmVudD48UD4yS1ZsZFN0U0JIYWJRdjBMelM4U1JNNDAwVG96RXg0MjVscG1TcEZ4eld6VEtGeVlmb2c3WGxZdGxOZVkzeHdQcDBZbkRWbnNJWStuTkcxcTd0Y3hCaWo5QlRLUVVDTWRXY2R1N0dLcHVFL2I5QytnUGFodWhZMmUyc25mazJ4TVRnQmJWZE5EZEVwblQ5UEtvdEczZFI5Tzc5Y2JiVk5IUVB0T21LaEtoanM9PC9QPjxRPjFZaVovSVJqRElRWEdPekVVb1pGeDNESHhNTUd5NERPMUl1eW5kRmZubmtieW4weTkrQmVPMEFkSHo5NUdlMzYyWHIyaFpNQWN4aG9Nb3c1NE9oYmhUaFliVCtsb2dINlZTeFMySDN2R2YvSFJoenJUbUFkNExpblRyZno3ZU1vK1VoMnEvMzd3dWU5L2FDajB1VGhDOER0NG5rbyt4dmFSSUJJMVVPR2N5cz08L1E+PERQPmxDc2FaclpJRTlGaWdzQTZFQXkvZTl0aitDekx2YW1PZHFFaEVLTEVxSEJqUWxtQjJoZ21NbkRTSDlnTUw1c3JnWVhUTTZocWZOR1kwNXg1NC91OUJhK0d6TVUyT2ZpcUhEcnZ2REFHVDQ0ZXFyVGY3UXVDKzBoT2V1aFNScXRzekhRbUExN0g1WUwxZ1gwaU81VWUyYldkOFI2M0hXQTFmVlhpL1Rrc0x2MD08L0RQPjxEUT5ac2J4RnhIQmV1eTVFVTRrMEhQQWNsWmVVTjV1RHRWWXVBVGxYQURDdlV3ZGpFRG1uMWhuQXEzQlZxRCtjUFNTb01zR2pSUk1TeG1jVFhnaEE1ZlROVFFCbTlQZXJUTzJnZmhyaDdoVnRYWGZQR2YrK2lKWlB5aWhuc243cHF5SHREU2txZlA5a2JwcFFBSnAxOEJDY1ozUzRnYmZLcjRsT0lObWl2K05YekU9PC9EUT48SW52ZXJzZVE+eUo5bWFteENER2dQVGVHa2RQdm1jcURsK3R2OUU5VmlRK3pqWXNSeFcwRENMT2toUERsWnh1RkhEZlI1cXZvNy8vZXJxUFNpZlZJRWFEaFJFenlMeTI2cFhlRjhUajRXdi9NMWMyL1V4WEZHS212Mk1qbEFScXNsVE4yS1hTMjR1YVhuY0J0dUtEUXZ1ZWJ2TUtYZjV4VDBBTEFYd1NYSmtabkhKREtTMUQ0PTwvSW52ZXJzZVE+PEQ+VXVuTEJyc05acXZ4YVBHekUxL2FXV1FrRTl1a09hNlVmdDdUclN0cEUzNkNWeFVJMG04TWZFUUlhUnVZc1I5clI1S3MrandZU3k1RGphNnUvNjB2R05lbnVSYkFiZlBiZ2ljb3NhWXp3MDZXT0xqM2F2RDVTZEhZb3RnVmQySmM1cGkxN1VSelU3cExWT0VXVzd1MVRpTDVCWisxV3ZUZmJOVTcyTWpkSVgxRzZWMWpTTGNsa0hyTnJDNmRYRCtzdlYxa3JFYUxndlVtUXM1THhmT29zSmVhVEF0eHE2NE13bDBLdjNUWlR4c3NGV3dQUVY3ZWhCY1h2bU1nYnN2WXpwbU9QeGRRTXZMY3l5NWVOS0JCZDh5MmpSaUI5ZmtCUDA5WEttdDNvenFLNkFQN1hoMDA5WS9qaEJnUTY4VStXRFIyTC9sQ2FWZmd1Skk0TEVkUzJRPT08L0Q+PC9SU0FLZXlWYWx1ZT4=")) {
             CCAuthHandleOptions options = new CCAuthHandleOptions();
             options.configurationOptions(configOptions);
@@ -203,7 +205,6 @@ public class CustomAuthHandler extends AbstractHandler implements ManagedLifecyc
     }
 public static String GenerateServiceKey(String requestURL)
 {
-
     RequestMessage request = new RequestMessage(RequestMethod.GET,requestURL);
     {
         String serviceKey = createServiceKey(request);
@@ -248,8 +249,12 @@ public static String GenerateServiceKey(String requestURL)
     }
 
 
-    public static void main(String[] args) throws UnsupportedEncodingException, CustomHandlerException {
-       Boolean bool = AuthorizeBearerToken(generateBearerToken("3ada351a-9083-4c51-aefb-59983ce33a02","oMjOxSIHNkNak589J_MNhg=="),"ptipkmndeg54");
-       log.info("This is the boolean value"+bool);
-    }
+ /*  public static void main(String[] args) throws UnsupportedEncodingException, CustomHandlerException {
+        String token = generateBearerToken("f22f7c65-dde1-4ed6-8fa4-4e81cc9f2283","6tEs5wo_Zeh88t-G5xM6mg==");
+        String key = GenerateServiceKey("https://vensdev2.xdtesting.net/Citrix/Monitor/OData/v4/data");
+        Boolean bool = AuthorizeBearerToken(token,"vensdev2");
+        log.info("this is the bearer token"+token);
+        log.info("This is the boolean value"+bool);
+        log.info("This is the key value"+key);
+    }*/
 }
